@@ -74,3 +74,60 @@ test('upload preserves every byte across encoding chunks and requires a processe
   duration = 0
   await assert.rejects(adapter.upload('marker.mp3', bytes), /processing unconfirmed/)
 })
+
+test('private previews use the stored media path with a bounded response', async () => {
+  const path = 'CDR-quran-سورة الإخلاص.mp3'
+  let bytes = new Uint8Array([10, 20, 30])
+  const adapter = new AzuraCastAdapter(config, (url, options) => {
+    assert.equal(url.origin, config.AZURACAST_ORIGIN)
+    assert.equal(options.headers.Authorization, 'Bearer ' + config.AZURACAST_API_KEY)
+    if (url.pathname.endsWith('/file/42')) return Response.json({ id: 42, path, size: 3 })
+    assert.equal(url.pathname, '/api/station/17/files/download')
+    assert.equal(url.searchParams.get('file'), path)
+    return new Response(bytes)
+  })
+  assert.equal(await adapter.previewMedia('42', 2), null)
+  assert.deepEqual(new Uint8Array(await new Response(await adapter.previewMedia('42', 3)).arrayBuffer()), bytes)
+  bytes = new Uint8Array(4)
+  await assert.rejects(new Response(await adapter.previewMedia('42', 3)).arrayBuffer(), /exceeded stored size/)
+})
+
+test('upload reconciliation recovers just the original provider media after an uncertain response', async () => {
+  const key = 'f7e0ef28-4a6c-41a9-9d3e-92e25b7c2a9e'
+  const path = key + '-marker.mp3'
+  const bytes = new Uint8Array(62)
+  let file
+  let writes = 0
+  const adapter = new AzuraCastAdapter(config, (url, options) => {
+    if (options.method === 'POST') {
+      writes++
+      assert.equal(JSON.parse(options.body).path, path)
+      file = { id: 42, path, size: bytes.length, length: 0 }
+      throw Error('response lost')
+    }
+    return Response.json(url.pathname.endsWith('/files') ? file ? [file] : [] : file)
+  })
+  await assert.rejects(adapter.upload('marker.mp3', bytes, key), /response lost/)
+  assert.equal(await adapter.uploadedTrack(path, bytes.length), null)
+  file.length = 6
+  for (const expected of [await adapter.uploadedTrack(path, bytes.length), await adapter.upload('marker.mp3', bytes, key)])
+    assert.equal(expected.id, '42')
+  assert.equal(await adapter.uploadedTrack(path, bytes.length + 1), null)
+  assert.equal(writes, 1)
+})
+
+test('daily playback reports only a verified, enabled fallback order', async () => {
+  const daily = { id: 176, name: 'Daily', is_enabled: true, type: 'default', source: 'songs',
+    order: 'sequential', num_songs: 2, schedule_items: [] }
+  let candidates = [daily]
+  const adapter = new AzuraCastAdapter({ ...config, AZURACAST_DAILY_PLAYLIST_ID: '90', AZURACAST_RECOVERY_PLAYLIST_ID: '176' }, (url, options) => {
+    assert.equal(options.method, 'GET')
+    if (url.pathname.endsWith('/playlists')) return Response.json(candidates)
+    if (url.pathname.endsWith('/order')) return Response.json([{ media: { id: 23 } }, { media: { id: 24 } }])
+    return Response.json(daily)
+  })
+  assert.deepEqual((await adapter.dailyPlayback()).tracks, ['23', '24'])
+  assert.equal((await adapter.dailyPlayback()).canReorder, false)
+  candidates = [daily, { ...daily, id: 45, name: 'Another fallback' }]
+  assert.equal(await adapter.dailyPlayback(), null)
+})

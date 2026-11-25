@@ -4,9 +4,12 @@ const operations = new Set([
   'radio_workspace',
   'radio_preview_window',
   'radio_save_draft',
+  'radio_save_daily',
+  'radio_save_collection',
+  'radio_save_program_edit',
   'radio_delete_program_draft',
 ])
-const safeErrors = new Set(['invalid_draft', 'invalid_tracks', 'invalid_window', 'revision_conflict'])
+const safeErrors = new Set(['invalid_draft', 'invalid_tracks', 'invalid_window', 'revision_conflict', 'sync_busy'])
 
 async function requestBody(request) {
   const reader = request.body?.getReader()
@@ -33,7 +36,7 @@ async function requestBody(request) {
 
 // Auth's /user endpoint validates the bearer. PostgREST receives that same bearer,
 // so the RPC checks the verified auth.uid() under the caller's database role.
-export function draftsHandler({ url, publicKey, origin, deployedOrigin, sync }, requestService = fetch) {
+export function draftsHandler({ url, publicKey, origin, deployedOrigin, sync, dailyOrder }, requestService = fetch) {
   return async (request) => {
     const access = webAccess(request, origin, deployedOrigin)
     const headers = {
@@ -58,7 +61,8 @@ export function draftsHandler({ url, publicKey, origin, deployedOrigin, sync }, 
       return send(e.message === 'too_large' ? 413 : 400, 'invalid_request')
     }
     if (
-      !(operations.has(payload?.name) || (sync && payload?.name === 'program_sync')) ||
+      !(operations.has(payload?.name) || (sync && payload?.name === 'program_sync') ||
+        (dailyOrder && payload?.name === 'daily_order')) ||
       !payload.args ||
       typeof payload.args !== 'object' ||
       Array.isArray(payload.args)
@@ -81,6 +85,10 @@ export function draftsHandler({ url, publicKey, origin, deployedOrigin, sync }, 
         const { status, data } = await sync(actor, payload.args)
         return Response.json(data, { status, headers })
       }
+      if (payload.name === 'daily_order') {
+        const { status, data } = await dailyOrder(actor, payload.args)
+        return Response.json(data, { status, headers })
+      }
       const result = await requestService(new URL('/rest/v1/rpc/' + payload.name, url), {
         ...options,
         method: 'POST',
@@ -95,7 +103,7 @@ export function draftsHandler({ url, publicKey, origin, deployedOrigin, sync }, 
           : detail.code?.startsWith('22')
             ? 'invalid_window'
             : 'invalid_request'
-        return send(result.status >= 500 ? 503 : error === 'revision_conflict' ? 409 : 400, error)
+        return send(result.status >= 500 ? 503 : ['revision_conflict', 'sync_busy'].includes(error) ? 409 : 400, error)
       }
       return Response.json(await result.json(), { headers })
     } catch {

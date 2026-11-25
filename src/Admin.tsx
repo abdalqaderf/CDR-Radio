@@ -1,57 +1,13 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { AudioLines, CalendarDays, Headphones, Library, LogOut, LockKeyhole } from 'lucide-react'
-import {
-  ammanDate,
-  discardProgram,
-  getWorkspace,
-  login,
-  logout,
-  message,
-  mode,
-  onAdminAccessLost,
-  previewWindow,
-  saveDraft,
-  stationApi,
-  syncProgram,
-  type Playlist,
-  type Preview,
-  type Program,
-  type TimeWindow,
-  type Track,
-  type Workspace,
-} from './radio'
-import { TrackOrder } from './TrackOrder'
-import { Player } from './Player'
-
-function useTask() {
-  const working = useRef(false)
-  const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState('')
-  const [failed, setFailed] = useState(false)
-  async function run(fn: () => Promise<string | void>) {
-    if (working.current) return
-    working.current = true
-    setBusy(true)
-    setNotice('')
-    setFailed(false)
-    try {
-      setNotice((await fn()) || '')
-    } catch (e) {
-      setFailed(true)
-      setNotice(message(e))
-    } finally {
-      working.current = false
-      setBusy(false)
-    }
-  }
-  return { run, busy, notice, failed }
-}
-
-function TaskNotice({ task }: { task: ReturnType<typeof useTask> }) {
-  return <p className="task-notice" data-failed={task.failed} role={task.failed ? 'alert' : 'status'}>
-    {task.busy ? 'جارٍ تنفيذ العملية…' : task.notice}
-  </p>
-}
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { LogOut, LockKeyhole, Upload } from 'lucide-react'
+import { TaskNotice, useEditorGuard, useTask } from './AdminFeedback'
+import { AudioUpload } from './AudioUpload'
+import { Collections } from './Collections'
+import { categories, count, localHint, Modal, PreviewAudio, trackDuration, trackMatches, usePreview } from './PlaylistControls'
+import { Daily } from './Daily'
+import type { EditorProps } from './EditorContent'
+import { Programs } from './Programs'
+import { getWorkspace, login, logout, mode, onAdminAccessLost, stationApi, type Playlist, type Track, type Workspace } from './radio'
 
 export function Login() {
   const [email, setEmail] = useState('')
@@ -113,491 +69,148 @@ export function Login() {
     </section>
   )
 }
-
-function Media({
-  workspace,
-  library,
-  libraryFailed,
-  refresh,
-}: {
-  workspace: Workspace
-  library: Track[]
-  libraryFailed: boolean
-  refresh: () => Promise<void>
-}) {
+function Media({ library, libraryState, refreshLibrary, onUpload, onDirty }: EditorProps) {
+  const libraryLoading = libraryState === 'loading'
+  const libraryFailed = libraryState === 'failed'
   const [search, setSearch] = useState('')
-  const [file, setFile] = useState<File | null>(null)
-  const upload = useTask()
-  const fileInput = useRef<HTMLInputElement>(null)
-  const visible = library.filter((t) => t.title.includes(search.trim()))
-  const [edit, setEdit] = useState<Playlist | null>(null)
-  const [generation, setGeneration] = useState(0)
-  return (
-    <>
-      <section className="state-panel">
-        <h2>ملفات الصوت</h2>
-        <label>
-          بحث في المكتبة
-          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} />
-        </label>
-        <ul className="library">
-          {visible.map((t) => (
-            <li key={t.id}>{t.title}</li>
-          ))}
-        </ul>
-        {!visible.length && (
-          <p>{libraryFailed || mode === 'local' ? 'المكتبة غير متصلة بالمحطة.' : 'لا توجد مقاطع مطابقة.'}</p>
-        )}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (file)
-              void upload.run(async () => {
-                await stationApi.upload(file)
-                await refresh()
-                setFile(null)
-                if (fileInput.current) fileInput.current.value = ''
-                return mode === 'hosted' ? 'أضيف الملف إلى مكتبة المحطة.' : 'أضيف الملف إلى مكتبة المعاينة المحلية.'
-              })
-          }}
-        >
-          <fieldset disabled={mode === 'local' || libraryFailed || upload.busy}>
-            <legend>إضافة ملف صوتي</legend>
-            <label>
-              ملف MP3 حتى ٥ ميبيبايت
-              <input
-                ref={fileInput}
-                type="file"
-                accept=".mp3,audio/mpeg"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              />
-            </label>
-            <button disabled={!file}>
-              {upload.busy ? 'جارٍ حفظ الملف…' : mode === 'hosted' ? 'إضافة إلى مكتبة المحطة' : 'إضافة إلى مكتبة المعاينة'}
-            </button>
-          </fieldset>
-        </form>
-        <p role="status">{upload.notice}</p>
-      </section>
-      <section className="state-panel">
-        <h2>مسودات قوائم التشغيل</h2>
-        {workspace.playlists.length === 0 && <p>لا توجد قوائم محفوظة.</p>}
-        {workspace.playlists.map((p) => (
-          <div className="saved" key={p.id}>
-            <span>
-              {p.title}
-              {workspace.dailyId === p.id && ' · القائمة اليومية المقترحة'}
-            </span>
-            <button
-              onClick={() => {
-                setEdit(p)
-                setGeneration((n) => n + 1)
-              }}
-            >
-              تحرير القائمة
-            </button>
-          </div>
-        ))}
-        <button
-          onClick={() => {
-            setEdit(null)
-            setGeneration((n) => n + 1)
-          }}
-        >
-          قائمة جديدة
+  const [filter, setFilter] = useState('all')
+  const [sort, setSort] = useState('title')
+  const [showUpload, setShowUpload] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const preview = usePreview()
+  const task = useTask()
+  const visible = library.filter((track) => trackMatches(track, filter, search)).sort((a, b) =>
+    (sort === 'duration' ? (a.seconds ?? Infinity) - (b.seconds ?? Infinity) : 0) ||
+      a.title.localeCompare(b.title, 'ar'))
+  useEditorGuard(uploading, onDirty)
+  return <section className="state-panel">
+      <div className="panel-heading">
+        <h2>كل الصوتيات</h2>
+        <button type="button" className="primary" disabled={mode === 'local'} onClick={() => { preview.stop(); setShowUpload(true) }}>
+          <Upload size={17} /> رفع ملفات جديدة
         </button>
-        <PlaylistForm
-          key={generation}
-          existing={edit}
-          dailyId={workspace.dailyId}
-          library={library}
-          refresh={refresh}
-        />
-      </section>
-    </>
-  )
-}
-
-function PlaylistForm({
-  existing,
-  dailyId,
-  library,
-  refresh,
-}: {
-  existing: Playlist | null
-  dailyId: string | null
-  library: Track[]
-  refresh: () => Promise<void>
-}) {
-  const [id] = useState(() => existing?.id ?? crypto.randomUUID())
-  const [revision, setRevision] = useState(existing?.revision ?? 0)
-  const [title, setTitle] = useState(existing?.title ?? '')
-  const [ids, setIds] = useState(existing?.tracks ?? [])
-  const [daily, setDaily] = useState(existing != null && existing.id === dailyId)
-  const task = useTask()
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault()
-        void task.run(async () => {
-          setRevision(await saveDraft('playlist', id, revision, { title, tracks: ids, daily }))
-          await refresh()
-          return 'حُفظت مسودة القائمة.'
-        })
-      }}
-    >
-      <fieldset disabled={task.busy}>
-        <label>
-          اسم القائمة
-          <input required maxLength={150} value={title} onChange={(e) => setTitle(e.target.value)} />
-        </label>
-        <TrackOrder library={library} ids={ids} onChange={setIds} />
-        <label className="check">
-          <input type="checkbox" checked={daily} onChange={(e) => setDaily(e.target.checked)} />
-          اقتراحها قائمةً يومية
-        </label>
-        <button className="primary" disabled={!ids.length}>
-          حفظ مسودة القائمة
-        </button>
-        {mode === 'hosted' ? (
-          <p className="muted">استخدم ترتيب المسودة في <a href="/admin/programs">البرامج المجدولة</a> للنشر. تعمل القائمة اليومية 176 من المحطة.</p>
-        ) : (
-          <button type="button" disabled>نشر القائمة على المحطة</button>
-        )}
-      </fieldset>
-      <p role="status">{task.notice}</p>
-    </form>
-  )
-}
-
-function Programs({
-  workspace,
-  library,
-  refresh,
-}: {
-  workspace: Workspace
-  library: Track[]
-  refresh: () => Promise<void>
-}) {
-  const [selected, setSelected] = useState<Program | null>(null)
-  const [generation, setGeneration] = useState(0)
-  const task = useTask()
-  function open(program: Program | null) {
-    setSelected(program)
-    setGeneration((n) => n + 1)
-  }
-  function reconcile(program: Program, action: 'retry' | 'cancel') {
-    void task.run(async () => {
-      const result = await syncProgram(action, program.id, program.revision)
-      await refresh()
-      open(null)
-      if (result.error) throw Error(result.error)
-      return result.status === 'cancelled' ? 'تأكّد إلغاء البرنامج من المحطة.' : 'تأكّد حفظ البرنامج على المحطة.'
-    })
-  }
-  return (
-    <>
-      <section className="state-panel">
-        <h2>البرامج المحفوظة</h2>
-        {!workspace.programs.length && <p>لا توجد برامج محفوظة.</p>}
-        {workspace.programs.map((p) => (
-          <div className="saved" key={p.id}>
-            <div>
-              <strong>{p.title}</strong>
-              <p>
-                {statusLabels[p.status]} · {ammanDate(p.startsAt)}
-              </p>
-              {p.providerPlaylistId && <p>قائمة المحطة {p.providerPlaylistId}</p>}
-              {p.verifiedAt && <p>آخر تحقق من المحطة {ammanDate(p.verifiedAt)}</p>}
+      </div>
+      <p className="muted">{localHint}</p>
+      <div className="media-tools">
+        <label>بحث في المكتبة<input type="search" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
+        <label>التصنيف<select aria-label="التصنيف" value={filter} onChange={(e) => { setFilter(e.target.value); preview.stop() }}>
+          <option value="all">كل التصنيفات</option>
+          {Object.entries(categories).map(([key, info]) => <option key={key} value={key}>{info.label}</option>)}
+        </select></label>
+      </div>
+      <div className="library-toolbar">
+        {!libraryLoading && <p className="meta-line">{count.format(visible.length)} مقطع</p>}
+        <details className="disclosure">
+          <summary>خيارات العرض</summary>
+        <label>ترتيب النتائج<select value={sort} onChange={(e) => setSort(e.target.value)}>
+          <option value="title">حسب العنوان</option><option value="duration">حسب المدة</option>
+        </select></label>
+          <p className="muted">إزالة مقطع من قائمة تُبقي ملفه في المكتبة. حذف الملف من المحطة يؤثر في كل القوائم التي تستخدمه.</p>
+        </details>
+      </div>
+      {libraryLoading && !task.busy && <p className="muted" role="status">جارٍ تحميل المكتبة…</p>}
+      {libraryFailed && <div className="row-actions"><p className="validation" role="alert">تعذّر تحديث المكتبة.</p>
+        <button type="button" disabled={task.busy || libraryLoading}
+          onClick={() => void task.run(refreshLibrary)}>إعادة تحميل المكتبة</button></div>}
+      <TaskNotice task={task} waiting="جارٍ تحميل المكتبة…" />
+      <ul className="library">
+        {visible.map((track) => {
+          const info = categories[track.category ?? 'other']
+          const Icon = info.icon
+          const listening = preview.state?.id === track.id
+          return <li key={track.id}>
+            <div className="media-row">
+              <span className="tile-icon"><Icon size={21} /></span>
+              <div className="media-title"><strong dir="auto">{track.title}</strong>
+                <p className="meta-line">{info.label} · <bdi>{trackDuration(track.seconds) ?? 'المدة غير معروفة'}</bdi></p>
+                {track.broadcastRestricted && <p className="meta-line">الاستماع التجريبي فقط بموجب إذن التسجيل.</p>}
+              </div>
+              <button type="button" aria-expanded={listening} disabled={track.previewable === false}
+                aria-label={(listening ? 'إيقاف الاستماع التجريبي إلى ' : 'استماع تجريبي إلى ') + track.title}
+                onClick={() => void preview.toggle(track)}>{listening ? 'إيقاف الاستماع' : 'استماع تجريبي'}</button>
             </div>
-            <div className="row-actions">
-              {p.status === 'draft' && (
-                <button disabled={task.busy} onClick={() => open(p)}>تحرير المسودة</button>
-              )}
-              {mode === 'hosted' && p.status === 'scheduled' && Date.parse(p.startsAt) > Date.now() + 60000 && (
-                <button disabled={task.busy} onClick={() => open(p)}>تحرير البرنامج المنشور</button>
-              )}
-              {mode === 'hosted' && p.pendingAction && (
-                <button disabled={task.busy} onClick={() => reconcile(p, 'retry')}>إعادة التحقق من المحطة</button>
-              )}
-              {mode === 'hosted' && (p.status === 'scheduled' || p.pendingAction) && (
-                <button disabled={task.busy} onClick={() => {
-                  if (confirm('إلغاء هذا البرنامج وإزالة جدولته من المحطة؟')) reconcile(p, 'cancel')
-                }}>إلغاء البرنامج في المحطة</button>
-              )}
-            </div>
-          </div>
-        ))}
-        <button disabled={task.busy} onClick={() => open(null)}>مسودة جديدة</button>
-        <p role="status">{task.notice}</p>
-      </section>
-      <ProgramForm
-        key={generation}
-        existing={selected}
-        playlists={workspace.playlists}
-        library={library}
-        refresh={refresh}
-        cleared={() => open(null)}
-        stationBusy={task.busy}
-      />
-    </>
-  )
-}
-
-const statusLabels: Record<string, string> = {
-  draft: 'مسودة',
-  publishing: 'جارٍ النشر',
-  scheduled: 'مجدول',
-  sync_failed: 'بانتظار التحقق',
-  cancelled: 'ملغى',
-}
-
-function ProgramForm({
-  existing,
-  playlists,
-  library,
-  refresh,
-  cleared,
-  stationBusy,
-}: {
-  existing: Program | null
-  playlists: Playlist[]
-  library: Track[]
-  refresh: () => Promise<void>
-  cleared: () => void
-  stationBusy: boolean
-}) {
-  const [id] = useState(() => existing?.id ?? crypto.randomUUID())
-  const [revision, setRevision] = useState(existing?.revision ?? 0)
-  const [title, setTitle] = useState(existing?.title ?? '')
-  const [windowSpec, setWindow] = useState<TimeWindow>(
-    existing?.window ?? { date: '', start: '', end: '', wholeDay: false },
-  )
-  const [ids, setIds] = useState(existing?.tracks ?? [])
-  const [playback, setPlayback] = useState(existing?.playback ?? 'repeat')
-  const [endPolicy, setEndPolicy] = useState(existing?.endPolicy ?? 'daily')
-  const [transition, setTransition] = useState(existing?.transition ?? 'finish')
-  const editing = existing?.status === 'scheduled'
-  const doc = { title, tracks: ids, window: windowSpec, playback, endPolicy, transition }
-  const [savedDoc, setSavedDoc] = useState(existing ? JSON.stringify(doc) : '')
-  const [handedOff, setHandedOff] = useState(false)
-  const [preview, setPreview] = useState<Preview | null>(null)
-  const task = useTask()
-  const update = (change: Partial<TimeWindow>) => {
-    setPreview(null)
-    setWindow({ ...windowSpec, ...change })
-  }
-  return (
-    <section className="state-panel">
-      <h2>{existing ? 'تحرير البرنامج' : 'إعداد البرنامج'}</h2>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          void task.run(async () => {
-            if (editing) {
-              const result = await syncProgram('edit', id, revision, doc)
-              setRevision(result.revision)
-              setHandedOff(Boolean(result.error))
-              await refresh()
-              if (result.error) throw Error(result.error)
-              return 'تأكّد حفظ التعديل على المحطة.'
-            }
-            setRevision(
-              await saveDraft('program', id, revision, doc),
-            )
-            setSavedDoc(JSON.stringify(doc))
-            await refresh()
-            return 'حُفظت مسودة البرنامج.'
-          })
-        }}
-      >
-        <fieldset disabled={task.busy || stationBusy || handedOff}>
-          <label>
-            اسم المناسبة
-            <input required maxLength={150} value={title} onChange={(e) => setTitle(e.target.value)} />
-          </label>
-          <label>
-            التاريخ بتوقيت عمّان
-            <input
-              type="date"
-              required
-              value={windowSpec.date}
-              onChange={(e) => update({ date: e.target.value })}
-            />
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={windowSpec.wholeDay}
-              onChange={(e) => update({ wholeDay: e.target.checked })}
-            />
-            طوال اليوم
-          </label>
-          {!windowSpec.wholeDay && (
-            <div className="time-grid">
-              <label>
-                وقت البداية
-                <input
-                  type="time"
-                  required
-                  value={windowSpec.start}
-                  onChange={(e) => update({ start: e.target.value })}
-                />
-              </label>
-              <label>
-                وقت النهاية
-                <input
-                  type="time"
-                  required
-                  value={windowSpec.end}
-                  onChange={(e) => update({ end: e.target.value })}
-                />
-              </label>
-            </div>
-          )}
-          {playlists.length > 0 && (
-            <label>
-              نسخ ترتيب المقاطع من قائمة محفوظة
-              <select value="" onChange={(e) => {
-                const list = playlists.find((playlist) => playlist.id === e.target.value)
-                if (list && (!ids.length || confirm('استبدال المقاطع الحالية بمقاطع القائمة؟')))
-                  setIds([...list.tracks])
-              }}>
-                <option value="">اختر قائمة</option>
-                {playlists.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-              </select>
-            </label>
-          )}
-          <TrackOrder library={library} ids={ids} onChange={setIds} />
-          <label>
-            التشغيل داخل الفترة
-            <select value={playback} onChange={(e) => setPlayback(e.target.value)}>
-              <option value="repeat">تكرار القائمة بالترتيب</option>
-              <option value="once">مرة واحدة</option>
-            </select>
-          </label>
-          <label>
-            عند نهاية الفترة
-            <select value={endPolicy} onChange={(e) => setEndPolicy(e.target.value)}>
-              <option value="daily">العودة إلى القائمة اليومية</option>
-              <option value="stop">إيقاف البث</option>
-            </select>
-          </label>
-          {endPolicy === 'stop' && (
-            <p>خيار الإيقاف مخصّص لنهاية ساعات العمل. اختر العودة إلى القائمة اليومية أثناء ساعات عمل الفروع.</p>
-          )}
-          <label>
-            الانتقال بين المقاطع
-            <select value={transition} onChange={(e) => setTransition(e.target.value)}>
-              <option value="finish">إكمال المقطع الحالي</option>
-              <option value="interrupt">مقاطعة فورية</option>
-            </select>
-          </label>
-          <p className="muted">
-            {transition === 'finish'
-              ? 'تطلب المسودة انتظار نهاية المقطع الجاري عند الانتقال. قد يأتي الانتقال بعد الوقت المحدد.'
-              : 'قد ينقطع المقطع قبل نهايته.'}
-          </p>
-          <div className="row-actions">
-            <button
-              type="button"
-              onClick={() =>
-                void task.run(async () => {
-                  setPreview(await previewWindow(windowSpec, id))
-                })
-              }
-            >
-              معاينة الفترة
-            </button>
-            <button className="primary" disabled={!ids.length}>
-              {editing ? 'حفظ التعديل على المحطة' : 'حفظ مسودة البرنامج'}
-            </button>
-            {!editing && (
-              <button type="button"
-                disabled={mode !== 'hosted' || !revision || savedDoc !== JSON.stringify(doc)}
-                onClick={() => void task.run(async () => {
-                  const result = await syncProgram('publish', id, revision)
-                  setHandedOff(true)
-                  await refresh()
-                  if (result.error) throw Error(result.error)
-                  return 'تأكّد نشر البرنامج على المحطة.'
-                })}
-              >نشر البرنامج</button>
-            )}
-          </div>
-          {mode === 'hosted'
-            ? <p className="muted">يدعم النشر التجريبي فترات أقل من ٢٤ ساعة ومقطعين مختلفين على الأقل. قد تبدأ المحطة مبكرًا أو تشغّل مقطعًا إضافيًا بعد النهاية.</p>
-            : <p className="muted">النشر على المحطة متاح من لوحة الإدارة المستضافة.</p>}
-          {revision > 0 && !editing && savedDoc && (
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('حذف هذه المسودة؟'))
-                  void task.run(async () => {
-                    await discardProgram(id, revision)
-                    await refresh()
-                    cleared()
-                  })
-              }}
-            >
-              حذف المسودة
-            </button>
-          )}
-        </fieldset>
-      </form>
-      {preview && (
-        <div className="summary" aria-live="polite">
-          <strong>الفترة بتوقيت عمّان</strong>
-          <p>
-            {ammanDate(preview.startsAt)} — {ammanDate(preview.endsAt)}
-          </p>
-          <p>
-            {preview.conflicts.length
-              ? 'تتداخل الفترة مع: ' + preview.conflicts.map((c) => c.title + ' (' + statusLabels[c.status] + ')').join('، ')
-              : 'لا توجد فترات متداخلة محفوظة.'}
-          </p>
-          {ids.length > 0 && (
-            <ol aria-label="ترتيب التشغيل في المعاينة">
-              {ids.map((track, position) => (
-                <li key={position}>{library.find((item) => item.id === track)?.title ?? track}</li>
-              ))}
-            </ol>
-          )}
-        </div>
-      )}
-      <p role="status">{task.notice}</p>
+            {listening && <PreviewAudio preview={preview.state} />}
+          </li>
+        })}
+      </ul>
+      {!visible.length && !libraryLoading && !libraryFailed &&
+        <p className="empty">{mode === 'local' ? 'المكتبة غير متصلة بالمحطة.' : search || filter !== 'all' ?
+          'لا توجد مقاطع مطابقة. جرّب تغيير البحث أو التصنيف.' : 'ارفع ملفًا صوتيًا لإضافته إلى المكتبة.'}</p>}
+      <Modal open={showUpload} title="رفع ملفات جديدة" sheet busy={uploading} close={() => setShowUpload(false)}>
+        <div className="modal-body"><AudioUpload onReady={(track) => {
+          onUpload(track); setSearch(''); setFilter(track.category ?? 'other')
+        }} onBusy={setUploading} /></div>
+      </Modal>
     </section>
-  )
 }
 
-export function Admin({ path }: { path: string }) {
+function AudioLibrary(props: EditorProps & { onSaved: (collection: Playlist) => void }) {
+  const [tab, setTab] = useState<'all' | 'collections'>('all')
+  const dirty = useRef(false)
+  const { onDirty } = props
+  const markDirty = useCallback((value: boolean) => { dirty.current = value; onDirty(value) }, [onDirty])
+  function open(next: typeof tab) {
+    if (tab !== next && (!dirty.current || confirm('هل تريد مغادرة العرض الحالي؟ قد توجد تغييرات غير محفوظة أو عملية جارية.'))) setTab(next)
+  }
+  return <>
+    <div className="filters" role="group" aria-label="عرض الصوتيات">
+      <button type="button" aria-pressed={tab === 'all'} onClick={() => open('all')}>كل الصوتيات</button>
+      <button type="button" aria-pressed={tab === 'collections'} onClick={() => open('collections')}>المجموعات</button>
+    </div>
+    {tab === 'all' ? <Media {...props} onDirty={markDirty} /> : <Collections {...props} onDirty={markDirty} />}
+  </>
+}
+
+export function Admin({ path, title }: { path: string; title: string }) {
   const [data, setData] = useState<Workspace | null>(null)
   const [tracks, setTracks] = useState<Track[]>([])
   const [libraryFailed, setLibraryFailed] = useState(false)
+  const [libraryLoading, setLibraryLoading] = useState(mode === 'fixture' || mode === 'hosted')
   const [locked, setLocked] = useState(mode === 'disconnected')
   const [loadFailed, setLoadFailed] = useState(false)
+  const dirty = useRef(false)
   const task = useTask()
+  const onDirty = useCallback((value: boolean) => { dirty.current = value }, [])
   async function refresh() {
     const workspace = await getWorkspace()
-    let media: Track[] = []
-    if (mode === 'fixture' || mode === 'hosted') {
-      try {
-        media = await stationApi.list()
-        setLibraryFailed(false)
-      } catch (e) {
-        if (e instanceof Error && e.message === 'admin_required') throw e
-        setLibraryFailed(true)
-      }
-    }
     setData(workspace)
-    setTracks(media)
+    return workspace
+  }
+  const libraryGeneration = useRef(0)
+  async function refreshLibrary() {
+    if (mode !== 'fixture' && mode !== 'hosted') return
+    const generation = ++libraryGeneration.current
+    setLibraryLoading(true)
+    setLibraryFailed(false)
+    try {
+      const library = await stationApi.list()
+      if (generation === libraryGeneration.current) { setTracks(library); setLibraryFailed(false) }
+    } catch (error) {
+      if (generation === libraryGeneration.current) setLibraryFailed(true)
+      throw error
+    } finally {
+      if (generation === libraryGeneration.current) setLibraryLoading(false)
+    }
+  }
+  function onUpload(track: Track) {
+    libraryGeneration.current++
+    setLibraryLoading(false)
+    setTracks((previous) => [...previous.filter((item) => item.id !== track.id), track])
+  }
+  function onCollectionSaved(collection: Playlist) {
+    setData((previous) => previous && {
+      ...previous,
+      collections: [...previous.collections.filter((item) => item.id !== collection.id), collection]
+        .sort((a, b) => a.title.localeCompare(b.title, 'ar')),
+    })
   }
   function loadWorkspace() {
     setLoadFailed(false)
-    void refresh().catch(() => setLoadFailed(true))
+    void refresh().then(() => refreshLibrary().catch(() => {})).catch(() => setLoadFailed(true))
   }
   useEffect(() => {
     const unsubscribe = onAdminAccessLost(() => {
+      libraryGeneration.current++
       setLocked(true)
       setData(null)
       setTracks([])
@@ -605,74 +218,37 @@ export function Admin({ path }: { path: string }) {
     if (mode !== 'disconnected') loadWorkspace()
     return unsubscribe
   }, [])
-  if (locked)
-    return (
-      <section className="state-panel">
-        <h2>يتطلب هذا القسم تسجيل الدخول</h2>
-        <p>يقتصر الوصول إلى المحتوى على المسؤول المخوّل.</p>
-        <a className="action" href="/admin/login">تسجيل الدخول</a>
-      </section>
-    )
-  if (!data)
-    return (
-      <section className="state-panel">
-        {loadFailed ? (
-          <>
-            <h2 role="alert">تعذّر تحميل مساحة الإدارة</h2>
-            <p>تحقّق من الاتصال ثم أعد المحاولة.</p>
-            <button onClick={loadWorkspace}>إعادة المحاولة</button>
-          </>
-        ) : <h2 role="status">جارٍ تحميل مساحة الإدارة…</h2>}
-      </section>
-    )
-  return (
-    <>
-      <div className="session">
-        <span>{mode === 'fixture' ? 'مساحة تجريبية على هذا الجهاز' : mode === 'hosted' ? 'إدارة المحطة' : 'مساحة الإدارة المحلية'}</span>
-        <button
-          disabled={task.busy}
-          onClick={() =>
-            void task.run(async () => {
-              await logout()
-              location.assign('/admin/login')
-            })
-          }
-        >
-          <LogOut size={16} />
-          خروج
-        </button>
-      </div>
-      <TaskNotice task={task} />
-      {path === '/admin/media' ? (
-        <Media workspace={data} library={tracks} libraryFailed={libraryFailed} refresh={refresh} />
-      ) : path === '/admin/programs' ? (
-        <Programs workspace={data} library={tracks} refresh={refresh} />
-      ) : (
-        <>
-          <section className="dashboard" aria-labelledby="dashboard-title">
-            <h2 id="dashboard-title">إدارة المحتوى</h2>
-            <div className="dashboard-links">
-              <a href="/admin/media">
-                <span className="tile-icon"><Library size={22} aria-hidden="true" /></span>
-                <strong>مكتبة الصوت</strong><span>{libraryFailed ? 'تعذّر تحميل المقاطع' : tracks.length + ' مقطعًا في المكتبة'}</span>
-              </a>
-              <a href="/admin/media#playlists">
-                <span className="tile-icon"><AudioLines size={22} aria-hidden="true" /></span>
-                <strong>قوائم التشغيل</strong><span>{data.playlists.length} مسودة قائمة</span>
-              </a>
-              <a href="/admin/programs">
-                <span className="tile-icon"><CalendarDays size={22} aria-hidden="true" /></span>
-                <strong>البرامج المجدولة</strong><span>{data.programs.filter((p) => p.status === 'scheduled' && Date.parse(p.endsAt) > Date.now()).length} برنامجًا مجدولًا</span>
-              </a>
-            </div>
-          </section>
-          <div className="state-panel overview-strip">
-            <div><h2>القائمة اليومية المقترحة</h2><p>{data.playlists.find((p) => p.id === data.dailyId)?.title ?? 'لم تُحدّد'}</p></div>
-            <a className="outline-action" href="/listen"><Headphones size={18} aria-hidden="true" /> فتح مشغّل الفرع</a>
-          </div>
-          <Player monitor />
-        </>
-      )}
-    </>
-  )
+  if (locked) return <section className="state-panel">
+    <h1 className="state-title">يتطلب هذا القسم تسجيل الدخول</h1>
+    <p>يقتصر الوصول إلى المحتوى على المسؤول المخوّل.</p>
+    <a className="action" href="/admin/login">تسجيل الدخول</a>
+  </section>
+  if (!data) return <section className="state-panel">
+    {loadFailed ? <>
+      <h2 role="alert">تعذّر تحميل مساحة الإدارة</h2>
+      <p>تحقّق من الاتصال ثم أعد المحاولة.</p>
+      <button type="button" onClick={loadWorkspace}>إعادة المحاولة</button>
+    </> : <h2 role="status">جارٍ تحميل مساحة الإدارة…</h2>}
+  </section>
+  const Editor = path === '/admin/programs' ? Programs : Daily
+  const editorProps: EditorProps = {
+    library: tracks, collections: data.collections ?? [],
+    libraryState: libraryLoading ? 'loading' : libraryFailed ? 'failed' : 'ready',
+    refreshLibrary, refresh, onUpload, onDirty,
+  }
+  return <>
+    <div className="admin-heading">
+      <h1>{title}</h1>
+      <button type="button" disabled={task.busy} onClick={() => {
+        if (dirty.current && !confirm('هناك تغييرات غير محفوظة أو عملية جارية. هل تريد تسجيل الخروج؟')) return
+        void task.run(async () => { await logout(); location.assign('/admin/login') })
+      }}><LogOut size={16} /> خروج</button>
+    </div>
+    <TaskNotice task={task} />
+    {path === '/admin/media' ? (
+      <AudioLibrary {...editorProps} onSaved={onCollectionSaved} />
+    ) : (
+      <Editor workspace={data} {...editorProps} />
+    )}
+  </>
 }

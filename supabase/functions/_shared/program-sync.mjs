@@ -1,4 +1,5 @@
 import { AzuraCastAdapter } from './azuracast.mjs'
+import { protectedDaily } from './media-labels.mjs'
 
 const numericId = (value) => /^[1-9][0-9]{0,14}$/.test(String(value))
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
@@ -26,7 +27,12 @@ export async function syncPlaylist(adapter, job, signal, setPlaylist) {
   const api = (path, method = 'GET', body) => adapter.programRequest(path, method, body, signal)
   if (!/^[0-9a-f-]{36}$/.test(job.id)) throw Error('provider_identity_mismatch')
   const name = 'CDR program ' + job.id
-  const matches = (await api('playlists')).filter((p) => p.name === name)
+  const playlists = await api('playlists')
+  const matches = playlists.filter((p) => p.name === name)
+  const daily = new Set((adapter.protectedPlaylists ?? []).map(Number))
+  for (const playlist of playlists)
+    if (protectedDaily(playlist)) daily.add(Number(playlist.id))
+  const assignedToDaily = (file) => file.playlists?.some((p) => daily.has(Number(p.id)))
   if (matches.length > 1 || (job.playlistId && matches.length && String(matches[0].id) !== job.playlistId))
     throw Error('provider_identity_mismatch')
   if (job.action === 'cancel' && !matches.length) {
@@ -50,8 +56,10 @@ export async function syncPlaylist(adapter, job, signal, setPlaylist) {
     const files = await api('files')
     const library = new Map(files.map((file) => [String(file.id), file]))
     const desired = job.tracks.map((id) => library.get(id))
-    if (desired.some((file) => !file?.song_id || !(file.length > 0) || file.playlists?.some((p) => p.id === 176)) ||
-      new Set(desired.map((file) => file.song_id)).size !== job.tracks.length)
+    if (job.tracks.some((track) => adapter.previewOnly?.has(track))) throw Error('recording_restricted')
+    if (desired.some((file) => !file?.song_id || !(file.length > 0))) throw Error('media_not_ready')
+    if (desired.some(assignedToDaily)) throw Error('protected_daily_media')
+    if (new Set(desired.map((file) => file.song_id)).size !== job.tracks.length)
       throw Error('unsupported_tracks')
     media = job.tracks.map(Number)
   }
@@ -61,7 +69,7 @@ export async function syncPlaylist(adapter, job, signal, setPlaylist) {
     playlist = await api('playlists', 'POST', { name, ...settings, is_enabled: false })
   }
   const id = Number(playlist.id)
-  if (!numericId(id) || id === 176 || playlist.name !== name) throw Error('provider_identity_mismatch')
+  if (!numericId(id) || daily.has(id) || playlist.name !== name) throw Error('provider_identity_mismatch')
   setPlaylist(String(id))
   const path = 'playlist/' + id
   const read = async () => {
@@ -96,7 +104,7 @@ export async function syncPlaylist(adapter, job, signal, setPlaylist) {
       if (!numericId(track) || track === 1350 || track === 1351) throw Error('provider_unconfirmed')
       const filePath = 'file/' + track
       const file = await api(filePath)
-      if (file.id !== track || file.playlists.some((p) => p.id === 176)) throw Error('provider_unconfirmed')
+      if (file.id !== track || (wanted.has(track) && assignedToDaily(file))) throw Error('provider_unconfirmed')
       const memberships = file.playlists.map((p) => p.id).filter((playlistId) => playlistId !== id)
       if (wanted.has(track)) memberships.push(id)
       await api(filePath, 'PUT', { playlists: memberships })
@@ -160,7 +168,8 @@ export function programSync({ url, serviceKey, provider }, request = fetch) {
       await syncPlaylist(adapter, job, deadline, (id) => { playlistId = id })
     } catch (failure) {
       outcome = 'sync_failed'
-      error = ['unsupported_tracks', 'unsupported_policy', 'window_too_soon'].includes(failure.message)
+      error = ['unsupported_tracks', 'unsupported_policy', 'window_too_soon',
+        'recording_restricted', 'protected_daily_media', 'media_not_ready'].includes(failure.message)
         ? failure.message : 'provider_unconfirmed'
     }
     const result = await db('finish', { p_outcome: outcome, p_playlist: playlistId })

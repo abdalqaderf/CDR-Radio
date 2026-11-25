@@ -1,11 +1,13 @@
 # CDR-Radio
-Centralized branch radio with an Arabic admin dashboard, saved program drafts, and a live audio player.
+Centralized branch radio for غماس بلدي with an Arabic playlist editor, scheduled programs and a live audio player.
 
 ## Current state
 
-The Arabic RTL app is deployed on Cloudflare Workers Free. The branch player connects to Quintastream station 12. The hosted admin supports media uploads, saved drafts and limited dated program publication, editing and cancellation. The demo is shareable with documented scheduling and device limitations. [Readiness checklist](docs/READINESS.md) · [Progress](docs/PROGRESS.md) · [Branch player](https://cdr-branch-radio.abdalqaderfroukh1.workers.dev/listen)
+The Arabic RTL app uses Cloudflare Workers Free. Managers sign in to **البث اليومي**, with **البرامج الخاصة** and **الصوتيات** alongside it. The daily editor shows the confirmed station order and the saved working copy. It can update the order of existing tracks when the configured daily target is active. Membership changes and fallback selection go through Quintastream. The shared **إضافة صوتيات** picker adds saved collections as ordered snapshots, individual files, or uploads. [Manager sign-in](https://cdr-branch-radio.abdalqaderfroukh1.workers.dev/admin/login) · [Branch player](https://cdr-branch-radio.abdalqaderfroukh1.workers.dev/listen) · [Readiness](docs/READINESS.md)
 
-The Arabic submission brief includes the verified public links, listener instructions, central management, architecture, AI usage, test evidence, limitations and a three-minute demo script. [Assessment handover](docs/HANDOVER_AR.md) · [Submission PDF](output/pdf/CDR-Radio-Submission-AR.pdf)
+The Arabic submission brief includes the verified public links, listener instructions, central management, architecture, AI usage, test evidence, limitations and a three-minute demo script. [Assessment handover](docs/HANDOVER_AR.md) · [Submission index](output/submission/اقرأني.md)
+
+The demo library includes licensed instrumentals, original spoken greetings and a separate recitation collection. [Permissions and program](docs/DEMO_AUDIO.md) · [Release screenshots](output/submission/screenshots/README.md) · [Rollback procedures](docs/OPERATIONS.md#scheduled-content-and-retention)
 
 ## Run locally
 
@@ -24,7 +26,7 @@ Configure the existing Supabase publishable key and the final public HTTPS origi
 
 ### Try the local fixture
 
-Run `npm run dev:fixture`, open the printed loopback URL at `/admin/login`, and select **فتح المعاينة المحلية**. All routes display an Arabic fixture banner. Use **مكتبة الصوت** to add a test MP3, order tracks and select a proposed daily playlist. In **البرامج المجدولة**, enter the date and window, copy a playlist or add tracks individually, preview, and save. **مشغّل الفرع** plays a six-second local marker. Station publication and cancellation are available in the hosted admin. [Dashboard operations](docs/OPERATIONS.md#dashboard-publication-editing-and-cancellation)
+Run `npm run dev:fixture`, open the printed loopback URL at `/admin/login`, and select **فتح المعاينة المحلية**. The daily editor opens with two test clips. Use **إضافة صوتيات** to upload a test MP3, then reorder, save and reload. To prepare a program, open **البرامج الخاصة** and select **إنشاء برنامج خاص**. Sample clips are under **ملفات التحقق** in the category filter. **مشغّل الفرع** plays a six-second local marker. Station updates, publication and cancellation use the hosted admin. [Dashboard operations](docs/OPERATIONS.md#dashboard-publication-editing-and-cancellation)
 
 The fixture uses a local preview session and a file-backed PGlite database in the ignored `.verification/radio-preview/` directory. Test uploads and drafts stay on this machine. Browser verification uses a separate in-memory database.
 

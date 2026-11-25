@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 
 const origin = process.argv[2]
 const secondChannel = process.argv[3] ?? 'chrome'
+const metadataOnly = process.argv.includes('--metadata-only')
 const site = URL.parse(origin ?? '')
 assert.ok(site?.protocol === 'https:' && site.origin === origin, 'Supply the exact public HTTPS origin.')
 const stationEndpoint = 'https://krsnebibuqbldyirfzhi.supabase.co/functions/v1/station'
@@ -12,8 +13,9 @@ const headings = {
   '/listen': 'مشغّل الفرع',
   '/demo': 'دليل التجربة',
   '/admin/login': 'دخول المسؤول',
-  '/admin/media': 'مكتبة الصوت',
-  '/admin/programs': 'البرامج المجدولة',
+  '/admin/media': 'يتطلب هذا القسم تسجيل الدخول',
+  '/admin/playlists': 'يتطلب هذا القسم تسجيل الدخول',
+  '/admin/programs': 'يتطلب هذا القسم تسجيل الدخول',
 }
 
 const browser = await chromium.launch({ channel: 'chrome' })
@@ -41,7 +43,7 @@ try {
       assert.equal(page.url(), origin + route)
       await heading.waitFor()
       assert.equal(await page.locator('html').getAttribute('dir'), 'rtl')
-      if (route === '/admin/media' || route === '/admin/programs') {
+      if (route === '/admin/media' || route === '/admin/programs' || route === '/admin/playlists') {
         await page.getByRole('heading', { name: 'يتطلب هذا القسم تسجيل الدخول' }).waitFor()
       }
     }
@@ -59,6 +61,10 @@ try {
   assert.equal(snapshot.headers()['access-control-allow-origin'], origin)
   const metadata = await snapshot.json()
   assert.equal(new URL(metadata.url).protocol, 'https:')
+  if (metadataOnly) {
+    assert.deepEqual(errors, [])
+    console.log('Public routes, reload, Arabic RTL, admin protection, listener QR and station metadata passed without starting playback.')
+  } else {
   function controls(listener) {
     return {
       start: listener.getByRole('button', { name: 'تشغيل البث', exact: true }),
@@ -83,7 +89,7 @@ try {
   await second.goto(origin + '/listen')
   const b = controls(second)
   await b.idle.waitFor()
-  assert.ok(await b.stop.isDisabled())
+  assert.equal(await b.stop.count(), 0)
   assert.equal(await second.evaluate(() => window.playedAudio.length), 0)
   await b.start.click()
   await playing(second, 1)
@@ -113,7 +119,7 @@ try {
 
   assert.equal((await second.reload())?.status(), 200)
   await b.idle.waitFor()
-  assert.ok(await b.stop.isDisabled())
+  assert.equal(await b.stop.count(), 0)
   assert.equal(await second.evaluate(() => window.playedAudio.length), 0)
   await b.start.click()
   await playing(second, 1)
@@ -129,6 +135,7 @@ try {
   await a.idle.waitFor()
   assert.deepEqual(errors, [])
   console.log(`Chrome ${browser.version()} and ${secondChannel} ${secondBrowser.version()}: public routes and reloads, route protection, QR, live late join, independent stop/rejoin, native mute and keyboard volume, and explicit play after reload passed.`)
+  }
 } finally {
   await secondBrowser?.close()
   await browser.close()

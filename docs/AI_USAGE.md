@@ -1,5 +1,19 @@
 # AI assistance · 2026-11-23
 
+## November 25 · deployment and handover
+
+The user asked Codex to “Distinguish mocks, hosted read-back, audible verification, and physical-device observations.” Codex applied the approved migration after checking remote history and comparing stored-data fingerprints, deployed the admin functions and frontend, and checked the hosted assets and workspace with Playwright. It identified the two missing station-protection settings through a hosted check. It reused the earlier MP3 capture and owner observations for listening evidence. [Release evidence](TEST_REPORT.md#november-25--final-deployment)
+
+## November 25 · final submission UX
+
+The user asked to “Insert collection contents as snapshots of consecutive individual entries.” Codex reused the ordered editor and the existing upload path. It added revisioned collection storage and tested whole and selected insertion, independent program order, stale edits and the dedicated daily binding with Playwright. The Quran restriction came from category checks in both the frontend and Edge code. Codex replaced these with recording-specific permission and readiness checks, preserving protected daily memberships. It used read-only provider checks for the preserved station lists and retained the earlier one-hour and device observations.
+
+## November 25 · playlist editor
+
+The user asked Codex to make everyday playlist administration easy for a nontechnical manager and wrote, “Do not imply that saving a draft changes the station.” Codex read the existing release, migration history and provider scheduling evidence. It implemented a shared Arabic ordered editor and upload panel, a provider read of the daily fallback, and a revision-checked saved edit for already published programs. The publication review uses the existing Amman window validation and station verification workflow.
+
+The user also asked to “clean up only those fixtures,” preserve playlist 176 and avoid starting a manual listening test. Codex used a loopback fixture for keyboard, pointer and touch automation and a labeled future program to test hosted configuration. It discarded browser responses after a real upload and publication to exercise reconciliation, removed the labeled fixtures, and verified the deployed files and the two backup audio hashes for playlist 176. The earlier one-hour and physical-device observations were retained. [Verification record](TEST_REPORT.md) · [Operations](OPERATIONS.md)
+
 OpenAI Codex assisted with repository inspection, assessment reconciliation, provider research, implementation and local verification.
 
 | User prompt excerpt | Work and verification |

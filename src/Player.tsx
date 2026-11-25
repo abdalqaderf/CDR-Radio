@@ -107,13 +107,10 @@ export function Player({ monitor = false }: { monitor?: boolean }) {
               : 'استمع إلى البث الموحّد لفروع غماس بلدي.'}
           </p>
           <div className="controls">
-            {running ? (
-              <button className="play" onClick={stop} key="stop"><Square size={19} aria-hidden="true" /> إيقاف</button>
-            ) : (
-              <button className="play" disabled={!url} onClick={start} key="start">
-                <Play size={19} aria-hidden="true" /> {mode === 'fixture' ? 'تشغيل العينة' : 'تشغيل البث'}
-              </button>
-            )}
+            <button className="play" disabled={!url} onClick={running ? stop : start}>
+              {running ? <Square size={19} aria-hidden="true" /> : <Play size={19} aria-hidden="true" />}
+              {running ? 'إيقاف' : mode === 'fixture' ? 'تشغيل العينة' : 'تشغيل البث'}
+            </button>
             <button aria-pressed={muted} onClick={() => setMuted(!muted)}>
               {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}{' '}
               {muted ? 'إلغاء الكتم' : 'كتم الصوت'}
@@ -153,7 +150,10 @@ export function Player({ monitor = false }: { monitor?: boolean }) {
           </p>
         )}
       </section>
-      <p className="local-note">الإيقاف والكتم ومستوى الصوت تخص هذا الجهاز.</p>
+      <div className="player-footer">
+        <p className="local-note">الإيقاف والكتم ومستوى الصوت تخص هذا الجهاز.</p>
+        {!monitor && <a href="/demo#audio-credits">مصادر المقاطع الصوتية</a>}
+      </div>
     </div>
   )
 }

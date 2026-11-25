@@ -52,6 +52,9 @@ export async function openFixtureDb(directory) {
 const calls = {
   radio_workspace: [],
   radio_save_draft: ['p_kind', 'p_id', 'p_revision', 'p_doc'],
+  radio_save_daily: ['p_id', 'p_revision', 'p_doc'],
+  radio_save_collection: ['p_id', 'p_revision', 'p_doc'],
+  radio_save_program_edit: ['p_id', 'p_revision', 'p_doc'],
   radio_preview_window: ['p_window', 'p_id'],
   radio_delete_program_draft: ['p_id', 'p_revision'],
 }

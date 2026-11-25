@@ -12,6 +12,28 @@ test('one provider item represents only one UTC start date, including overnight'
   assert.throws(() => providerWindow('2099-05-01T21:00Z', '2099-05-02T21:00Z'), /unsupported_policy/)
 })
 
+test('scheduling protects daily media, recording-specific rights and readiness before writes', async () => {
+  const daily = { id: 188, name: 'CDR daily - Ghammas Baladi' }
+  const other = { id: 1375, song_id: 'other', length: 8, playlists: [] }
+  const protectedFiles = [
+    [{ id: 1381, song_id: 'welcome', length: 9, playlists: [{ id: daily.id }] }, 'protected_daily_media'],
+    [{ id: 1386, song_id: 'ikh', length: 33, playlists: [] }, 'recording_restricted'],
+    [{ id: 1387, song_id: 'processing', length: 0, playlists: [] }, 'media_not_ready'],
+  ]
+  for (const [file, reason] of protectedFiles) {
+    const adapter = { id: '12', protectedPlaylists: ['188'], previewOnly: new Set(['1386']), async programRequest(path, method) {
+      assert.equal(method, 'GET')
+      if (path === 'playlists') return [daily]
+      if (path === 'profile') return { station: { id: 12, timezone: 'UTC' } }
+      if (path === 'files') return [other, file]
+      assert.fail(path)
+    } }
+    const job = { id: randomUUID(), action: 'apply', startsAt: '2099-05-01T10:00Z', endsAt: '2099-05-01T11:00Z',
+      tracks: [String(other.id), String(file.id)] }
+    await assert.rejects(syncPlaylist(adapter, job, AbortSignal.timeout(3000), () => assert.fail()), { message: reason })
+  }
+})
+
 test('restricted sync reserves atomically, protects uncertainty, and persists only verified outcomes', async () => {
   const db = await openFixtureDb()
   const id = randomUUID()
@@ -51,12 +73,23 @@ test('restricted sync reserves atomically, protects uncertainty, and persists on
     await assert.rejects(finish(operation, 'scheduled', '176'), /invalid_outcome/)
     assert.equal((await finish(operation, 'scheduled')).status, 'scheduled')
     await assert.rejects(begin(other, 1, randomUUID(), 'publish'), { code: '23P01' })
+    const pendingEdit = { ...doc, tracks: ['1376', '1375'] }
+    const saveEdit = (revision) => fixtureRpc(db, 'radio_save_program_edit', {
+      p_id: id, p_revision: revision, p_doc: pendingEdit,
+    })
+    assert.equal(await saveEdit(5), 6)
+    await assert.rejects(saveEdit(5), /revision_conflict/)
+    assert.deepEqual((await current()).unpublishedEdit, pendingEdit)
+    assert.deepEqual((await current()).tracks, doc.tracks)
+    assert.equal((await current()).status, 'scheduled')
     operation = randomUUID()
-    const edit = await begin(id, 5, operation, 'edit', { ...doc, tracks: ['1376', '1375'] })
+    const edit = await begin(id, 6, operation, 'edit', pendingEdit)
     assert.deepEqual(edit.tracks, ['1376', '1375'])
+    assert.deepEqual((await current()).unpublishedEdit, pendingEdit)
     await finish(operation, 'scheduled')
+    assert.equal((await current()).unpublishedEdit, null)
     operation = randomUUID()
-    assert.equal((await begin(id, 7, operation, 'cancel')).action, 'cancel')
+    assert.equal((await begin(id, 8, operation, 'cancel')).action, 'cancel')
     await finish(operation, 'cancelled')
     assert.equal((await current()).status, 'cancelled')
     assert.ok((await current()).verifiedAt)
@@ -67,11 +100,12 @@ test('restricted sync reserves atomically, protects uncertainty, and persists on
   }
 })
 
-test('a lost create response is reconciled by UUID and cancellation clears the owned provider object', async () => {
+test('licensed recitation can be scheduled, a lost create reconciles by UUID, and cancellation clears the owned playlist', async () => {
   const id = randomUUID()
   const signal = AbortSignal.timeout(4000)
   const fixture = { id: 185, name: 'CDR program ' + id, is_enabled: false, schedule_items: [] }
   const files = [1375, 1376].map((track) => ({ id: track, song_id: String(track), playlists: [{ id: 181 }], length: 6 }))
+  files[0].path = 'CDR-quran-سورة الإخلاص.mp3'
   const assigned = new Map()
   let exists = false
   let creates = 0

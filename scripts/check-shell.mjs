@@ -14,9 +14,10 @@ try {
   page.on('pageerror', error => errors.push(error.name))
   const pages = {
     '/listen': 'مشغّل الفرع',
-    '/admin': 'لوحة الإدارة',
-    '/admin/media': 'مكتبة الصوت',
-    '/admin/programs': 'البرامج المجدولة',
+    '/admin': 'يتطلب هذا القسم تسجيل الدخول',
+    '/admin/media': 'يتطلب هذا القسم تسجيل الدخول',
+    '/admin/playlists': 'يتطلب هذا القسم تسجيل الدخول',
+    '/admin/programs': 'يتطلب هذا القسم تسجيل الدخول',
     '/admin/login': 'دخول المسؤول',
     '/demo': 'دليل التجربة',
     '/missing': 'الصفحة غير موجودة',
@@ -33,13 +34,14 @@ try {
       }), 'Arabic layout at ' + width + ' on ' + path)
       if (path === '/listen') assert.ok(await page.getByRole('button', { name: 'تشغيل البث' }).isDisabled())
     }
-    console.log('Seven routes rendered at ' + width + 'px')
+    console.log('Eight routes rendered at ' + width + 'px')
   }
   await page.goto(base + '/listen')
   await page.keyboard.press('Tab')
   await page.keyboard.press('Enter')
   assert.ok(await page.locator('#main').evaluate(el => el === document.activeElement))
-  await page.getByRole('navigation').getByRole('link', { name: 'مكتبة الصوت' }).click()
+  await page.getByRole('link', { name: 'الإدارة', exact: true }).click()
+  await page.getByRole('navigation', { name: 'إدارة المحطة' }).getByRole('link', { name: 'الصوتيات' }).click()
   await page.getByRole('link', { name: 'تسجيل الدخول', exact: true }).click()
   await page.getByRole('heading', { name: 'خدمة تسجيل الدخول غير متصلة' }).waitFor()
   assert.deepEqual(errors, [])

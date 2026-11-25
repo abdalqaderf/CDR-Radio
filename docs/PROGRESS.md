@@ -1,5 +1,45 @@
 # CDR Radio progress
 
+## November 25, 2026 · final deployment
+
+- Applied migration `202611250006` on Supabase Free. All ten migration versions now match. Two reusable drafts were copied with their track order intact, and existing data, daily pointers and access restrictions were verified. Added the absent Edge settings for daily 188 and recovery 176. Supabase reports `admin-drafts` v12, `admin-media` v13, and public `station` v5. Their final bundle hashes match the versions observed immediately after the admin deployment.
+- Cloudflare Workers Free serves `43fd7404-ba29-42ce-a9d1-a40d643a2932` at 100%. Hosted tests covered ordered collections, whole and partial insertion, independent snapshots, daily binding, save and reload, access restrictions, and desktop and mobile layouts. The labeled test data was cleaned up and the workspace matched its baseline. Station playlists 188, 176 and 189 retained their states and orders. [Release evidence](TEST_REPORT.md#november-25--final-deployment)
+- The submission now includes the Arabic PDF, hosted screenshots and the current usage and test records. Prior audio and physical observations remain in scope for their original runs. Provider timing limitations and remaining unperformed checks are identified. Opening-hours automation and Phase 8 remain deferred. [Submission index](../output/submission/اقرأني.md)
+- Archived 18 superseded paths under the ignored `.verification/archive/2026-11-25-final-release/` with an original-path manifest. Kept referenced historical screenshots, provider diagnostics, station backups, configuration and private local credentials. The submission contains one PDF and 14 current captures. PDF annotations, public links, local references and package credential checks passed.
+
+## November 25, 2026 · final UX candidate
+
+- The shared audio picker copies whole or selected collections in saved order. Collections persist independently of the daily working copy and scheduled programs. Preparation saves, provider application and station-order restoration remain separate. Rights checks are scoped to individual recordings, and publication checks readiness, protected memberships and distinct recordings.
+- The desktop/mobile isolated workflows, 27 regressions, TypeScript, lint and both builds passed. Read-only station checks confirmed 188 active and 176 and 189 disabled with their established orders. The existing public routes, QR and MP3 mount responded. No new audible or physical listening session was run.
+- The linked dry run of the candidate identified migration `202611250006` as the only pending migration. This was the baseline used during the subsequent authorized deployment.
+- Opening-hours scheduling and daily resets are deferred. All branches operate daily from 12:00 noon to 06:00 the following morning. Phase 8 remains deferred.
+
+## November 25, 2026 · daily binding and preparation review
+
+- The legacy daily selection identified the separate Quran draft. The dedicated working-copy pointer was empty, so the deployed editor opened from station 12 playlist 188 in both desktop and mobile verification. The editor identifies the provider list and any saved revision, shows differences, and presents the external activation steps before a preparation save.
+- Workers version `773d8a6b-ffc3-40cc-94da-4d8c9f2c9012`, `admin-drafts` v10 and `admin-media` v11. Verification used read-only station and workspace access and discarded browser edits. The existing-order hosted check and mocked changed-order tests are documented separately. [Investigation](TEST_REPORT.md#november-25--daily-editor-screenshot-investigation)
+
+## November 25, 2026 · manager workflow release
+
+- **البث اليومي.** Sign-in opens the daily editor with the confirmed station order until a dedicated daily copy is saved. The legacy selection and reusable playlists retain their data and are available for optional reuse. The app applies reviewed order-only changes to fallback 188. Membership changes and fallback activation hand off to the station dashboard.
+- **البرامج الخاصة and مكتبة الصوتيات.** Program setup has two steps followed by Amman publication review. Saved programs, verified schedule windows and cancellations have distinct labels. The library centralizes search, category filters, metadata, uploads and local playback. Track removal leaves library files available.
+- **Free deployment.** Workers version `ab227de1-6a32-475f-9afa-1f625a0fcbda`, Supabase migrations `202611250004` and `202611250005`, `admin-drafts` v9 and `admin-media` v10. The branch player retains its device-volume guidance. [Public sign-in](https://cdr-branch-radio.abdalqaderfroukh1.workers.dev/admin/login) · [Verification](TEST_REPORT.md#november-25--manager-workflow-release) · [Screenshots](../output/screenshots/README.md)
+
+## November 25, 2026 · playlist management release
+
+- **Administration.** **قوائم التشغيل** brings daily playback and special programs into two paths. The daily view reads the configured fallback order from Quintastream. The shared editor supports handle drag, keyboard ordering, move buttons, local preview, undo and searchable multi-selection. MP3 uploads wait for verified media readiness before insertion. The app prepares daily orders and the station dashboard activates them.
+- **Publication.** Saving a change to a published program preserves the existing schedule and stores the proposed edit with its revision. The Arabic review shows the Amman window and playback order before confirmation. A read-back receipt confirms publication. The workflow offers reconciliation when a response is uncertain.
+- **Deployment.** Published Workers Free version `38a6cf15-b026-4540-ad98-947087034bc6`. Supabase migration `202611250003` is applied. `admin-drafts` version 8 and `admin-media` version 9 are active. Playlist 176 retains its order and archived hashes. The existing one-hour record and physical observations remain the evidence for those listening conditions. [Playlist management](https://cdr-branch-radio.abdalqaderfroukh1.workers.dev/admin/playlists) · [Verification](TEST_REPORT.md#november-25--playlist-management-ux) · [Screenshots](../output/screenshots/README.md)
+
+## November 25, 2026 · غماس بلدي release
+
+- **Player and overview.** Released the Arabic branded listening screen, device-only controls, separate now/next station metadata, and admin overview shortcuts. The warm red, cream and charcoal palette is proposed. The restaurant logo and photographs were omitted at the owner’s direction. The release uses an original waveform icon and a CSS heritage motif.
+- **Library and programs.** Added Arabic category filters, title and duration sorting, authenticated local previews, upload validation and category capture, a searchable track picker, schedule summaries and explicit station confirmations. The architecture remains React, Supabase Auth and Edge Functions, and Quintastream. The UI adapts Soundtrack’s schedule preview and opening-hours flow, Radio.co’s dated playlist workflow, and Spotify’s library filters. [Soundtrack](https://help.soundtrack.io/hc/en-us/articles/115002028512-How-to-schedule-music-on-your-account) · [Radio.co](https://help.radio.co/en/articles/1044910-scheduling-events) · [Spotify](https://support.spotify.com/us/article/your-library/)
+- **Audio.** Eight files passed full MP3 decoding and station download hash verification. Daily playlist 188 was staged and verified before coming on air at 09:27 Amman. Playlist 176 retains its unscheduled original order and matching backup checksums and can be re-enabled. Quran collection 189 is disabled, scheduled nowhere, and intact byte for byte. The 5 MiB limit is unchanged and the total demo files use about 13.1 MB against the plan’s published 1 GB AutoDJ quota. [Audio permissions and programming](DEMO_AUDIO.md) · [Rollback procedures](OPERATIONS.md#scheduled-content-and-retention)
+- **Deployment.** Cloudflare Workers Free version `3e3b9558-268b-4512-b9ac-9ecb011180de` and the existing Supabase Free `station`, `admin-media` and `admin-drafts` functions are deployed. No migrations or billing changes were required. [Branch player](https://cdr-branch-radio.abdalqaderfroukh1.workers.dev/listen) · [Screenshots](../output/screenshots/) · [Test report](TEST_REPORT.md)
+
+The rest of this record preserves the station evidence from before the branded release. The previous schedule and cancellation results continue to apply.
+
 ## November 25, 2026 · status for submission on November 26
 
 **The demo and submission package are ready to share with documented limitations. Full acceptance remains open.** The public links, QR and mount passed a final read-only check. The completed one-hour capture and the earlier Windows/iOS observations of daily → special → daily are preserved. Windows 11 and iPhone 11 sounded synchronized to the owner. The owner declined an additional recording, so numerical skew is **unmeasured**. [Readiness checklist](READINESS.md) · [Assessment handover](HANDOVER_AR.md)

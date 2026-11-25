@@ -55,6 +55,14 @@ test('anonymous, non-admin and direct table writes are denied', async () => {
     { code: '42501' },
   )
   await assert.rejects(fixtureRpc(db, 'radio_workspace', {}, randomUUID()), { code: '42501' })
+  const collection = { p_id: randomUUID(), p_revision: 0, p_doc: { title: 'Verification', tracks: ['A'] } }
+  await assert.rejects(fixtureRpc(db, 'radio_save_collection', collection, randomUUID()), { code: '42501' })
+  await assert.rejects(db.transaction(async (tx) => {
+    await tx.exec('set local role anon')
+    await tx.query('select public.radio_save_collection($1,$2,$3)', [
+      collection.p_id, collection.p_revision, collection.p_doc,
+    ])
+  }), { code: '42501' })
   await assert.rejects(
     fixtureRpc(
       db,
@@ -152,6 +160,32 @@ test('moving the daily selection invalidates an open editor of the former daily 
   assert.equal((await read()).dailyId, replacement)
   assert.equal(await save('playlist', original, revision + 1, { ...doc, daily: false }), 3)
   assert.equal((await read()).dailyId, replacement)
+})
+
+test('the daily editor has one working copy, preserves legacy lists, and locks the saved revision while reordering', async () => {
+  const before = await read()
+  assert.equal(before.dailyEditorId, null)
+  const workingId = randomUUID()
+  const update = (p_id, p_revision) => fixtureRpc(db, 'radio_save_daily', {
+    p_id, p_revision, p_doc: { title: 'البث اليومي', tracks: ['B', 'A'] },
+  })
+  assert.equal(await update(workingId, 0), 1)
+  await assert.rejects(update(randomUUID(), 0), /revision_conflict/)
+  const operation = randomUUID()
+  const reserve = (actor, revision) => db.query('select radio_begin_daily_order($1,$2,$3,$4) as tracks', [
+    actor, revision, workingId, operation,
+  ])
+  await assert.rejects(reserve(randomUUID(), 1), { code: '42501' })
+  await assert.rejects(reserve(fixtureAdmin, 2), /revision_conflict/)
+  assert.deepEqual((await reserve(fixtureAdmin, 1)).rows[0].tracks, ['B', 'A'])
+  await assert.rejects(update(workingId, 1), /sync_busy/)
+  await assert.rejects(reserve(fixtureAdmin, 1), /sync_busy/)
+  await db.query('select radio_finish_daily_order($1,$2,$3,$4)', [operation, fixtureAdmin, workingId, 'verified'])
+  assert.equal(await update(workingId, 1), 2)
+  const after = await read()
+  assert.equal(after.dailyEditorId, workingId)
+  assert.equal(after.dailyId, before.dailyId)
+  assert.deepEqual(after.playlists.filter((playlist) => playlist.id !== workingId), before.playlists)
 })
 
 test('overlap reservation, adjacency, retry and uncertain provider outcomes are enforced in PostgreSQL', async () => {

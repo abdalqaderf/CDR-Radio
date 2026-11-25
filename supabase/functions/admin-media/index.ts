@@ -31,8 +31,32 @@ Deno.serve(async (request) => {
       AZURACAST_ORIGIN: Deno.env.get('AZURACAST_ORIGIN'),
       AZURACAST_STATION_ID: Deno.env.get('AZURACAST_STATION_ID'),
       AZURACAST_API_KEY: Deno.env.get('AZURACAST_API_KEY'),
+      AZURACAST_DAILY_PLAYLIST_ID: Deno.env.get('AZURACAST_DAILY_PLAYLIST_ID'),
+      AZURACAST_RECOVERY_PLAYLIST_ID: Deno.env.get('AZURACAST_RECOVERY_PLAYLIST_ID'),
+      AZURACAST_PREVIEW_ONLY_MEDIA_IDS: Deno.env.get('AZURACAST_PREVIEW_ONLY_MEDIA_IDS'),
     })
-    if (request.method === 'GET') return Response.json(await adapter.library(), { headers })
+    const params = new URL(request.url).searchParams
+    const name = params.get('name') || ''
+    const key = params.get('key')
+    if (key !== null && !/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/.test(key))
+      return fail(400, 'invalid_request')
+    if (request.method === 'GET') {
+      if (params.has('daily')) return Response.json(await adapter.dailyPlayback(), { headers })
+      if (key) {
+        const size = Number(params.get('size'))
+        if (!/\.mp3$/i.test(name) || name.length > 180 || /[\\/:*?"<>|\p{Cc}\p{Cf}]/u.test(name) ||
+          !Number.isSafeInteger(size) || size <= 0 || size > maxUpload)
+          return fail(400, 'invalid_request')
+        const track = await adapter.uploadedTrack(key + '-' + name, size)
+        return Response.json(track, { status: track ? 200 : 202, headers })
+      }
+      const id = params.get('preview')
+      if (id === null) return Response.json(await adapter.library(), { headers })
+      if (!/^[1-9]\d{0,14}$/.test(id)) return fail(400, 'invalid_request')
+      const stream = await adapter.previewMedia(id, maxUpload)
+      if (!stream) return fail(404, 'preview_unavailable')
+      return new Response(stream, { headers: { ...headers, 'Content-Type': 'audio/mpeg', 'X-Content-Type-Options': 'nosniff' } })
+    }
     const reader = request.body?.getReader()
     if (!reader) return fail(400, 'invalid_mp3')
     const bytes = new Uint8Array(maxUpload)
@@ -52,10 +76,11 @@ Deno.serve(async (request) => {
       }
     } finally { reader.releaseLock() }
     const data = bytes.subarray(0, size)
-    const name = new URL(request.url).searchParams.get('name') || ''
     if (!validMp3(name, request.headers.get('content-type'), data)) return fail(400, 'invalid_mp3')
     try {
-      return Response.json(await adapter.upload(name, data), { status: 201, headers })
+      const track = await adapter.upload(name, data, key)
+      if (track) return Response.json(track, { status: 201, headers })
+      return key ? Response.json(null, { status: 202, headers }) : fail(502, 'upload_unconfirmed')
     } catch {
       return fail(502, 'upload_unconfirmed')
     }

@@ -1,0 +1,14 @@
+{
+  "daily": [
+    { "file": "welcome/opening.mp3", "title": "أهلًا بكم في غماس بلدي" },
+    { "file": "music/easy-lemon.mp3", "title": "جلسة خفيفة" },
+    { "file": "music/study-and-relax.mp3", "title": "استراحة هادئة" },
+    { "file": "music/bossa-antigua.mp3", "title": "بوسا المساء" },
+    { "file": "welcome/hospitality.mp3", "title": "نورتونا في غماس بلدي" }
+  ],
+  "quran": [
+    { "file": "quran/al-ikhlas.mp3", "title": "سورة الإخلاص" },
+    { "file": "quran/al-falaq.mp3", "title": "سورة الفلق" },
+    { "file": "quran/al-nas.mp3", "title": "سورة الناس" }
+  ]
+}
