@@ -1,0 +1,46 @@
+{
+  "name": "cdr-branch-radio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:fixture": "vite --configLoader native --mode fixture --host 127.0.0.1",
+    "dev:supabase": "vite --configLoader native --mode supabase-local --host 127.0.0.1",
+    "dev:hosted": "vite --configLoader native --mode supabase-hosted --host 127.0.0.1 --port 5173 --strictPort",
+    "build": "tsc --noEmit && vite build --configLoader native",
+    "build:hosted": "tsc --noEmit && vite build --configLoader native --mode supabase-hosted",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "test": "node --test tests/*.test.mjs",
+    "test:fixture": "node scripts/check-fixture.mjs",
+    "test:shell": "node scripts/check-shell.mjs",
+    "verify:provider": "node --env-file-if-exists=.env.server.local scripts/verify-provider.mjs"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.2",
+    "lucide-react": "^0.577.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.16",
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.1.17",
+    "@types/qrcode": "1.5.6",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "eslint": "^10.15.0",
+    "globals": "^16.5.0",
+    "playwright-core": "1.56",
+    "qrcode": "1.5.4",
+    "tailwindcss": "^4.1.17",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vite": "^7.3.0"
+  }
+}

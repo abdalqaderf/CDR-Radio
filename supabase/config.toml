@@ -1,0 +1,18 @@
+project_id = "cdr-branch-radio"
+
+[auth]
+enable_signup = false
+
+[auth.email]
+enable_signup = false
+
+[functions.station]
+verify_jwt = false
+
+[functions.admin-drafts]
+# The handler verifies the caller with Supabase Auth and forwards their bearer to PostgREST.
+verify_jwt = false
+
+[functions.admin-media]
+# PostgREST validates the JWT and the existing workspace RPC enforces the admin allowlist.
+verify_jwt = false
